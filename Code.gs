@@ -29,11 +29,18 @@ var LIKE_COLOR = '#ff6b8b';
 
 // ===== メニュー =====
 function onOpen() {
-  SpreadsheetApp.getUi()
-    .createMenu('note-suki')
-    .addItem('今すぐ集計', 'dailySnapshot')
-    .addItem('毎日6時に自動実行を設定', 'setupTrigger')
-    .addToUi();
+  // スプレッドシートを開いた時に自動で呼ばれ、メニューを作る。
+  // ※ エディタから手動実行すると UI コンテキストが無く getUi() が例外になる。
+  //    手動で動かしたいのは onOpen ではなく dailySnapshot。
+  try {
+    SpreadsheetApp.getUi()
+      .createMenu('note-suki')
+      .addItem('今すぐ集計', 'dailySnapshot')
+      .addItem('毎日6時に自動実行を設定', 'setupTrigger')
+      .addToUi();
+  } catch (e) {
+    // UI の無いコンテキスト（手動実行・トリガー等）では何もしない
+  }
 }
 
 function prop_(key) {
