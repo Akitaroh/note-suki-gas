@@ -47,6 +47,14 @@ function urlname_() {
 function tokyoDate_(d) {
   return Utilities.formatDate(d || new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
 }
+// セル値が Date 型(Sheetsの自動日付化)でも文字列でも yyyy-MM-dd に正規化。日付でなければ null
+function normDate_(v) {
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return Utilities.formatDate(v, 'Asia/Tokyo', 'yyyy-MM-dd');
+  }
+  var s = String(v);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
 
 // ===== note 非公式 API =====
 function noteGet_(path) {
@@ -107,17 +115,20 @@ function readHistSheet_(ss) {
   if (!sh || sh.getLastRow() < 1 || sh.getLastColumn() < 2) return { hist: hist, titles: titles, dates: dates };
   var vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
   var header = vals[0];
+  // 列index -> 正規化日付（Date型に化けていても拾う＝これが前回の修正点）
+  var colDate = {};
   for (var c = 2; c < header.length; c++) {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(String(header[c]))) dates.push(String(header[c]));
+    var ds = normDate_(header[c]);
+    if (ds) { colDate[c] = ds; dates.push(ds); }
   }
   for (var r = 1; r < vals.length; r++) {
     var key = vals[r][0];
     if (!key) continue;
     titles[key] = vals[r][1];
     hist[key] = {};
-    for (var c2 = 2; c2 < header.length; c2++) {
+    for (var c2 in colDate) {
       var v = vals[r][c2];
-      if (v !== '' && v !== null) hist[key][String(header[c2])] = Number(v);
+      if (v !== '' && v !== null) hist[key][colDate[c2]] = Number(v);
     }
   }
   return { hist: hist, titles: titles, dates: dates };
@@ -144,6 +155,8 @@ function writeHistSheet_(ss, articles, prev, today) {
 
   var sh = ss.getSheetByName(SHEET_HIST) || ss.insertSheet(SHEET_HIST);
   sh.clear();
+  // 日付ヘッダ(行1, C列以降)を「文字列」書式で固定＝Sheetsの自動日付化を防ぐ（バグの再発防止）
+  if (dates.length > 0) sh.getRange(1, 3, 1, dates.length).setNumberFormat('@');
   sh.getRange(1, 1, rows.length, header.length).setValues(rows);
   sh.hideSheet();
   return { hist: hist, titles: titles, dates: dates };
@@ -213,7 +226,10 @@ function writeArticleTrendSheet_(ss, articles, dates) {
         'MATCH($A' + rr + ',' + SHEET_HIST + '!$C$1:$ZZ$1,0)),"")'
     ]);
   }
-  if (grid.length > 0) sh.getRange(3, 1, grid.length, 2).setValues(grid);
+  if (grid.length > 0) {
+    sh.getRange(3, 1, grid.length, 1).setNumberFormat('@'); // A列の日付を文字列固定（MATCH整合のため）
+    sh.getRange(3, 1, grid.length, 2).setValues(grid);
+  }
 
   // プルダウン（記事タイトル一覧）。前回選択が生きてれば維持、無ければ先頭(=スキ最多)
   var rule = SpreadsheetApp.newDataValidation().requireValueInList(titles, true).setAllowInvalid(true).build();
